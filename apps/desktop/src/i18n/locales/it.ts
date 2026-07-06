@@ -3362,4 +3362,17 @@ export default withEnglishFallback({
     noAvailable: "Tutte le estensioni disponibili sono installate.",
     noInstalled: "Nessuna estensione installata.",
   },
+  sqlFileTree: {
+    title: "File SQL",
+    openFolder: "Apri cartella",
+    closePanel: "Chiudi",
+    loading: "Caricamento in corso...",
+    noFolder: "Nessuna cartella aperta",
+    noSqlFiles: "Nessun file SQL trovato",
+    folderAlreadyOpen: "Questa cartella è già aperta",
+    removeFolder: "Rimuovi cartella",
+    openFailed: "Apertura cartella fallita: {message}",
+    loadFailed: "Caricamento file SQL fallito: {message}",
+    desktopOnly: "Questa funzionalità è disponibile solo su desktop",
+  },
 });
