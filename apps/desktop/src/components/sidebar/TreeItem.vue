@@ -118,6 +118,7 @@ import {
   buildCopyTableDataSql,
   buildEmptyTableSql,
   buildTruncateTableSql,
+  supportsDropTableCascade,
   supportsSchemaComment,
   type DropTableChildObjectSqlOptions,
   type DropObjectSqlOptions,
@@ -1714,6 +1715,7 @@ const renameObjectName = ref("");
 const renameObjectError = ref("");
 const renameObjectPreviewSql = ref("");
 const dropTablePreviewSql = ref("");
+const dropTableCascade = ref(false);
 const emptyTablePreviewSql = ref("");
 const truncateTablePreviewSql = ref("");
 const dropObjectPreviewSql = ref("");
@@ -2442,17 +2444,25 @@ const canEditSchemaComment = computed(() => {
   return props.node.type === "schema" && !!props.node.database && !config?.read_only && supportsSchemaComment(effectiveDatabaseTypeForConnection(config));
 });
 
-function tableAdminSqlOptions(): TableAdminSqlOptions {
-  return {
+const canDropTableCascade = computed(() => props.node.type === "table" && supportsDropTableCascade(currentDatabaseType()));
+
+function tableAdminSqlOptions(options?: { cascade?: boolean }): TableAdminSqlOptions {
+  const result: TableAdminSqlOptions = {
     databaseType: currentDatabaseType(),
     schema: props.node.schema,
     tableName: props.node.label,
   };
+  if (options?.cascade) result.cascade = true;
+  return result;
+}
+
+function dropTableSqlOptions(): TableAdminSqlOptions {
+  return tableAdminSqlOptions({ cascade: canDropTableCascade.value && dropTableCascade.value });
 }
 
 async function refreshDropTablePreviewSql() {
   dropTablePreviewSql.value = "";
-  dropTablePreviewSql.value = await buildDropTableSql(tableAdminSqlOptions()).catch(() => "");
+  dropTablePreviewSql.value = await buildDropTableSql(dropTableSqlOptions()).catch(() => "");
 }
 
 async function refreshEmptyTablePreviewSql() {
@@ -2466,6 +2476,7 @@ async function refreshTruncateTablePreviewSql() {
 }
 
 function dropTable() {
+  dropTableCascade.value = false;
   void refreshDropTablePreviewSql();
   showDropTableConfirm.value = true;
 }
@@ -2480,7 +2491,7 @@ async function confirmDropTable() {
   if (!node.connectionId || !node.database) return;
   try {
     await connectionStore.ensureConnected(node.connectionId);
-    const sql = dropTablePreviewSql.value || (await buildDropTableSql(tableAdminSqlOptions()));
+    const sql = dropTablePreviewSql.value || (await buildDropTableSql(dropTableSqlOptions()));
     await api.executeQuery(node.connectionId, node.database, sql, node.schema);
     toast(t("contextMenu.dropTableSuccess", { name: node.label }), 3000);
     closeDroppedTableObjectTabsForNode(node);
@@ -3790,8 +3801,22 @@ function openTableImport() {
 
 function openStructureEditor() {
   const node = props.node;
-  if (node.type !== "table" || !node.connectionId || !node.database) return;
-  queryStore.openTableStructure(node.connectionId, node.database, node.schema, node.label);
+  if (!node.connectionId || !node.database) return;
+  if (node.type === "table") {
+    queryStore.openTableStructure(node.connectionId, node.database, node.schema, node.label);
+    return;
+  }
+  if (node.type === "column" && node.tableName) {
+    const columnName = tableChildDropObjectName(node).trim();
+    if (!columnName) return;
+    queryStore.openTableStructure(node.connectionId, node.database, node.schema, node.tableName, "columns", { kind: "column", name: columnName });
+    return;
+  }
+  if (node.type === "index" && node.tableName) {
+    const indexName = tableChildDropObjectName(node).trim();
+    if (!indexName) return;
+    queryStore.openTableStructure(node.connectionId, node.database, node.schema, node.tableName, "indexes", { kind: "index", name: indexName });
+  }
 }
 
 function openFieldLineage() {
@@ -3835,7 +3860,8 @@ const canOpenTableImport = computed(() => {
   return props.node.type === "table" && !isSqlServerLinkedNode(props.node) && !!props.node.database && supportsTableImport(currentDatabaseType());
 });
 const canOpenStructureEditor = computed(() => {
-  return props.node.type === "table" && !isSqlServerLinkedNode(props.node) && !!props.node.database && supportsTableStructureEditing(currentTableStructureDatabaseType());
+  const editableNode = props.node.type === "table" || ((props.node.type === "column" || props.node.type === "index") && !!props.node.tableName);
+  return editableNode && !isSqlServerLinkedNode(props.node) && !!props.node.connectionId && !!props.node.database && supportsTableStructureEditing(currentTableStructureDatabaseType());
 });
 const canOpenFieldLineage = computed(() => {
   return props.node.type === "column" && !!props.node.database && !!props.node.tableName && supportsFieldLineage(currentDatabaseType());
@@ -4756,9 +4782,16 @@ function treeItemMenuItems(): ContextMenuItem[] {
   // 7. Column
   if (node.type === "column") {
     items.push({ label: t("contextMenu.copyName"), action: copyName, icon: Copy, shortcut: shortcutCopyName.value });
+    const columnActions: ContextMenuItem[] = [];
+    if (canOpenStructureEditor.value) {
+      columnActions.push({ label: t("contextMenu.editColumn"), action: openStructureEditor, icon: PencilRuler });
+    }
     if (canOpenFieldLineage.value) {
+      columnActions.push({ label: t("lineage.open"), action: openFieldLineage, icon: Network });
+    }
+    if (columnActions.length > 0) {
       items.push({ label: "", separator: true });
-      items.push({ label: t("lineage.open"), action: openFieldLineage, icon: Network });
+      items.push(...columnActions);
     }
     if (canDropTableChildObject.value) {
       items.push({ label: "", separator: true });
@@ -4775,6 +4808,10 @@ function treeItemMenuItems(): ContextMenuItem[] {
 
   if (node.type === "index" || node.type === "fkey" || node.type === "trigger") {
     items.push({ label: t("contextMenu.copyName"), action: copyName, icon: Copy, shortcut: shortcutCopyName.value });
+    if (node.type === "index" && canOpenStructureEditor.value) {
+      items.push({ label: "", separator: true });
+      items.push({ label: t("contextMenu.editIndex"), action: openStructureEditor, icon: PencilRuler });
+    }
     if (node.type === "index" && canDropMongoIndex.value) {
       items.push({ label: "", separator: true });
       items.push({
@@ -5151,7 +5188,17 @@ function treeItemMenuItems(): ContextMenuItem[] {
     </DialogContent>
   </Dialog>
 
-  <DangerConfirmDialog v-model:open="showDropTableConfirm" :title="t('contextMenu.confirmDropTableTitle')" :message="t('contextMenu.confirmDropTableMessage', { name: node.label })" :sql="dropTablePreviewSql" :confirm-label="t('contextMenu.dropTable')" @confirm="confirmDropTable" />
+  <DangerConfirmDialog v-model:open="showDropTableConfirm" :title="t('contextMenu.confirmDropTableTitle')" :message="t('contextMenu.confirmDropTableMessage', { name: node.label })" :sql="dropTablePreviewSql" :confirm-label="t('contextMenu.dropTable')" @confirm="confirmDropTable">
+    <template v-if="canDropTableCascade" #options>
+      <label class="mb-3 flex items-start gap-2 rounded-md border bg-muted/20 px-3 py-2 text-sm">
+        <input v-model="dropTableCascade" type="checkbox" class="mt-0.5 h-3.5 w-3.5 shrink-0 accent-primary" @change="refreshDropTablePreviewSql()" />
+        <span class="grid gap-0.5">
+          <span class="font-medium text-foreground">{{ t("contextMenu.dropTableCascade") }}</span>
+          <span class="text-xs leading-5 text-muted-foreground">{{ t("contextMenu.dropTableCascadeHint") }}</span>
+        </span>
+      </label>
+    </template>
+  </DangerConfirmDialog>
 
   <DangerConfirmDialog v-model:open="showEmptyTableConfirm" :title="t('contextMenu.confirmEmptyTableTitle')" :message="t('contextMenu.confirmEmptyTableMessage', { name: node.label })" :sql="emptyTablePreviewSql" :confirm-label="t('contextMenu.emptyTable')" @confirm="confirmEmptyTable" />
 
