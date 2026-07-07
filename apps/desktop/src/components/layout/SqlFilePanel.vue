@@ -281,7 +281,7 @@ const contextMenuItems = computed<ContextMenuItem[]>(() => {
     const folderIdx = folders.value.findIndex((f) => f.path === target.folderPath);
     const folder = folderIdx !== -1 ? folders.value[folderIdx] : undefined;
     return [
-      { label: t("sqlFileTree.locateInFileManager"), action: () => revealInFileManager(target.folderPath), icon: FolderSearch },
+      { label: t("sqlFileTree.revealInFileManager"), action: () => revealInFileManager(target.folderPath), icon: FolderSearch },
       { label: t("sqlFileTree.copyPath"), action: () => copyPath(target.folderPath), icon: Copy },
       { label: "", separator: true },
       { label: t("sqlFileTree.expandAll"), action: () => folder && setAllExpanded(folder, true), icon: ChevronsUpDown, disabled: !folder },
@@ -295,7 +295,7 @@ const contextMenuItems = computed<ContextMenuItem[]>(() => {
 
   if (target.kind === "dir") {
     return [
-      { label: t("sqlFileTree.locateInFileManager"), action: () => revealInFileManager(target.entry.path), icon: FolderSearch },
+      { label: t("sqlFileTree.revealInFileManager"), action: () => revealInFileManager(target.entry.path), icon: FolderSearch },
       { label: t("sqlFileTree.copyPath"), action: () => copyPath(target.entry.path), icon: Copy },
       { label: "", separator: true },
       { label: t("sqlFileTree.expandAll"), action: () => expandSubtree(target), icon: ChevronsUpDown },
@@ -408,7 +408,7 @@ function clearContextTarget() {
                     <RefreshCw class="h-3 w-3" :class="folder.loading ? 'animate-spin' : ''" />
                   </Button>
                 </LightTooltip>
-                <LightTooltip :text="t('sqlFileTree.locateInFileManager')" side="bottom" :delay="0" :close-delay="0" nowrap>
+                <LightTooltip :text="t('sqlFileTree.revealInFileManager')" side="bottom" :delay="0" :close-delay="0" nowrap>
                   <Button variant="ghost" size="icon" class="h-4 w-4 shrink-0 text-muted-foreground hover:text-foreground" @click.stop="revealInFileManager(folder.path)">
                     <FolderSearch class="h-3 w-3" />
                   </Button>
