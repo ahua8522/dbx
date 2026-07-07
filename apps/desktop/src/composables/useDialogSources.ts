@@ -32,6 +32,7 @@ const dataComparePrefillSchema = ref("");
 const dataComparePrefillTable = ref("");
 const sqlFilePrefillConnectionId = ref("");
 const sqlFilePrefillDatabase = ref("");
+const sqlFilePrefillFilePath = ref("");
 const diagramPrefillConnectionId = ref("");
 const diagramPrefillDatabase = ref("");
 const diagramPrefillSchema = ref("");
@@ -115,6 +116,7 @@ export function useDialogSources() {
         if (v) {
           sqlFilePrefillConnectionId.value = v.connectionId;
           sqlFilePrefillDatabase.value = v.database;
+          sqlFilePrefillFilePath.value = v.filePath ?? "";
           showSqlFileDialog.value = true;
           connectionStore.sqlFileSource = null;
         }
@@ -305,6 +307,7 @@ export function useDialogSources() {
     dataComparePrefillTable,
     sqlFilePrefillConnectionId,
     sqlFilePrefillDatabase,
+    sqlFilePrefillFilePath,
     diagramPrefillConnectionId,
     diagramPrefillDatabase,
     diagramPrefillSchema,
