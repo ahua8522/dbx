@@ -1,6 +1,6 @@
 package com.dbx.agent.tdengine;
 
-import com.dbx.agent.test.TestSupport;
+import com.dbx.agent.ColumnInfo;
 import com.dbx.agent.ConnectParams;
 import com.dbx.agent.DatabaseAgent;
 import com.dbx.agent.ExecuteQueryOptions;
@@ -9,6 +9,7 @@ import com.dbx.agent.TableInfo;
 import com.dbx.agent.test.JdbcAgentFake;
 import com.dbx.agent.test.JdbcFakeExecutionBehaviorTest;
 import com.dbx.agent.test.JdbcMetadataSqlFake;
+import com.dbx.agent.test.TestSupport;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Proxy;
 import java.nio.charset.StandardCharsets;
@@ -166,6 +167,26 @@ class TDengineAgentMetadataTest {
     }
 
     @Test
+    void marksTimestampAndCompositeKeyDescribeColumnsAsPrimaryKeys() throws Exception {
+        ResultSet resultSet = describeResultSet(new String[][] {
+            {"ts", "TIMESTAMP", "8", ""},
+            {"seq", "INT", "4", "COMPOSITE KEY"},
+            {"voltage", "FLOAT", "4", ""},
+            {"site", "VARCHAR(32)", "32", "TAG"}
+        });
+
+        List<ColumnInfo> columns = TDengineAgent.readDescribeColumns(resultSet);
+
+        Assertions.assertTrue(columns.get(0).getIs_primary_key());
+        Assertions.assertFalse(columns.get(0).getIs_nullable());
+        Assertions.assertTrue(columns.get(1).getIs_primary_key());
+        Assertions.assertFalse(columns.get(1).getIs_nullable());
+        Assertions.assertFalse(columns.get(2).getIs_primary_key());
+        Assertions.assertFalse(columns.get(3).getIs_primary_key());
+        Assertions.assertEquals("TAG", columns.get(3).getExtra());
+    }
+
+    @Test
     void doesNotExposeDatabasesAsSchemas() {
         TDengineAgent agent = new TDengineAgent();
         TestSupport.setPrivateConnection(agent, JdbcMetadataSqlFake.connection());
@@ -301,5 +322,26 @@ class TDengineAgentMetadataTest {
         );
 
         Assertions.assertEquals("jdbc:TAOS-RS://127.0.0.1:6041/db?timezone=UTC#anchor", sanitized);
+    }
+
+    private static ResultSet describeResultSet(String[][] rows) {
+        int[] rowIndex = {-1};
+        return (ResultSet) Proxy.newProxyInstance(
+            ResultSet.class.getClassLoader(),
+            new Class<?>[] {ResultSet.class},
+            (proxy, method, args) -> {
+                if ("next".equals(method.getName())) {
+                    rowIndex[0] += 1;
+                    return rowIndex[0] < rows.length;
+                }
+                if ("getString".equals(method.getName())) {
+                    return rows[rowIndex[0]][((Integer) args[0]) - 1];
+                }
+                if ("close".equals(method.getName())) {
+                    return null;
+                }
+                throw new UnsupportedOperationException(method.getName());
+            }
+        );
     }
 }
